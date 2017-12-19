@@ -11,6 +11,7 @@
 'use strict';
 const Alexa = require('alexa-sdk');
 var feed = require("feed-read");
+var request = require("request");
 
 //=========================================================================================================================================
 //TODO: The items below this comment need your attention.
@@ -29,7 +30,7 @@ var river_level = "River Level";
 function parse(content){
     var height = substr(content, "Latest Observation: ", ' ')
     var volume = substr(content, "Latest Observation (Secondary): ", ' ')
-    return ["The little falls gauge reads "+height+" feet.", height]
+    return ["The little falls gauge reads "+height+" feet", height]
 }
 
 function substr(content, key, sep){
@@ -58,7 +59,7 @@ function change_to_text(change){
 }
 
 function track_change(current, near, near_time, far, far_time){
-    var changes = [change(current, near, 0.05), change(near,far,0.05)]
+    var changes = [change(current, near, 0.005), change(near,far,0.005)]
     if (changes[0] == changes[1] && changes[0] == 0){
         return " The level will remain steady in the near future. "+
         "It will be " + near + "ft on " + near_time +
@@ -78,6 +79,18 @@ function parse_future(content, current){
     return track_change(parseFloat(current), parseFloat(near), near_time, parseFloat(far), far_time)
 }
 
+function parse_current(body){
+    var re = /USGS\t\d*\t[\d -:]*\tEST(\t\d+\.\d+\tP){4}/gi;
+    var matches = body.match(re);
+    var last_row = matches[matches.length-1];
+    var all_values = last_row.match(/\d+\.\d/gi);
+    var guage = all_values[0];
+    var middle_temp = all_values[1];
+    var bottom_temp = all_values[2];
+    var top_temp = all_values[3];
+    return [guage, top_temp];
+}
+
 
 exports.handler = function(event, context, callback) {
     var alexa = Alexa.handler(event, context);
@@ -91,17 +104,18 @@ const handlers = {
         this.emit('RiverLevel');
     },
     'RiverLevel': function () {
-        var that = this
-        feed('https://water.weather.gov/ahps2/rss/obs/brkm2.rss', function(err, articles) {
-            if (err) console.log(err);
-            var current_conditions = parse(articles[0].content)
+        var that = this;
+        request({
+            uri: "https://nwis.waterdata.usgs.gov/nwis/uv?cb_00010=on&cb_00065=on&format=rdb&site_no=01646500&period=0",
+        }, function(error, response, body) {
+            var parsed = parse_current(body);
+            var f_temp = parseFloat(parsed[1])*9/5+32;
+            var curr_level = parsed[0];
             feed('http://water.weather.gov/ahps2/rss/fcst/brkm2.rss', function(err, articles) {
                 if (err) console.log(err);
-                var future = parse_future(articles[0].content, current_conditions[1])
-                river_level = current_conditions[0]+future;
-
-                const speechOutput = river_level;
-
+                var future = parse_future(articles[0].content, curr_level);
+                const speechOutput =  "The little falls guage reads " +curr_level + " feet at " 
+                                + f_temp.toFixed() + " degrees fahrenheit." + future;
                 that.response.cardRenderer(SKILL_NAME, speechOutput);
                 that.response.speak(speechOutput);
                 that.emit(':responseReady');

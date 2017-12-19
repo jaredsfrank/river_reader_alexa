@@ -16,6 +16,8 @@
   "dependencies": {
     "alexa-sdk": "^1.0.24",
     "feed-read": "0.0.1",
-    "i18next": "^10.2.1"
+    "i18next": "^10.2.1",
+    "node-read": "^0.1.7",
+    "request": "^2.83.0"
   }
 }
